@@ -1,0 +1,58 @@
+train_data <- read.csv("C:/Users/USER/Desktop/단순회귀분석_데이터셋/01.simple_train_data.csv")
+library(ggplot2)
+
+ggplot(train_data, aes(x= thigh, y= upper_arm))+
+  geom_point(alpha =0.7)+
+  labs(title = "대퇴부 vs 상박부 삼전도",
+       x= "대퇴부 둘레(thigh,cm)",
+       y= "상박부 둘레 (upper)arm, cm)")+
+  theme_minimal()
+
+model <- lm(upper_arm ~ thigh, data = train_data)
+summary(model)
+#             Estimate Std. Error t value Pr(>|t|)    
+#(Intercept) 5.784231   0.324304   17.84   <2e-16 ***
+#thigh       0.388886   0.005374   72.36   <2e-16 ***
+# p vlue가 0.05보다 작으므로 귀무가설 기각해서 y = 5.784 + 0.389x(회기 계수)
+
+
+#Multiple R-squared:  0.8399,	Adjusted R-squared:  0.8398 
+#F-statistic:  5237 on 1 and 998 DF,  p-value: < 2.2e-16
+#(귀무가설: 독립변수는 종속변수를 유의미하게 설명하지앟는다.) 
+#<- 기각하면(0.05 보다 작으면)위의 설명력을 확인
+#설명력= R-squared
+residuals(model)
+
+train_data <- read.csv("C:/Users/USER/Desktop/단순회귀분석_데이터셋/01.simple_train_2.csv")
+
+ggplot(train_data, aes(x= thigh, y= upper_arm))+
+  geom_point(alpha =0.7)+
+  labs(title = "대퇴부 vs 상박부 삼전도",
+       x= "대퇴부 둘레(thigh,cm)",
+       y= "상박부 둘레 (upper)arm, cm)")+
+  theme_minimal()
+
+
+model <- lm(upper_arm ~ thigh, data = train_data)
+summary(model)
+#y=10.634 + 0.307x
+residuals(model)
+#설명력 = 0.3
+
+
+
+
+data <- read.csv("C:/Users/USER/Downloads/Automobile (1).csv")
+
+ggplot(data, aes(x= mpg, y= weight))+
+  geom_point(alpha =0.7)+
+  labs(title = "연비 vs 무게",
+       x= "연비",
+       y= "무게")+
+  theme_minimal()
+
+model <- lm(weight ~ mpg, data = data)
+summary(model)
+#y= 5089.483 -90.117x
+#(귀무가설: 독립변수는 종속변수를 유의미하게 설명하지앟는다.) <- 기각
+#설명력은 0.691
