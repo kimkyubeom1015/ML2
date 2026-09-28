@@ -1,0 +1,113 @@
+train_data <- read.csv("C:/Users/USER/Desktop/단순회귀분석_데이터셋/01.simple_train_data.csv")
+test_data <- read.csv("C:/Users/USER/Desktop/단순회귀분석_데이터셋/01.simple_test_data.csv")
+
+model <- lm(upper_arm ~ thigh, data = train_data)
+summary(model)
+#y=5.78 + 0.38x, 설명력=0.83
+
+saveRDS(model, "regression_model.rds")
+
+loaded_model <- readRDS("regression_model.rds")
+
+predicted <- predict(loaded_model, newdata = test_data)
+head(predicted)
+
+results <- data.frame(Actual = test_data$upper_arm, Predicted = predicted)
+
+rmse <- sqrt(mean((results$Actual - results$Predicted)^2))
+print(paste("RMSE:",round(rmse,3)))
+#rmse:1.511
+
+
+install.packages("rstatix")
+install.packages("skimr")
+library(rstatix)
+library(skimr)
+
+df <- read.csv("C:/Users/USER/Desktop/02.다중회귀분석_실습/02.diabetes.csv"
+               ,header = TRUE, stringsAsFactors = TRUE)
+skim(df)
+
+#결측값 제거 
+df <- na.omit(df)
+
+#불필요 변수 제거
+df <- select(df, -c(Outcome))
+skim(df)
+
+result <- lm(df$Diabetes ~ . , data = df) # ~.은 모든변수사용 (하나하+하기귀찮아서) 
+result1 <- lm(df$Diabetes ~ 1, data = df) # 다른 변수 고려x (단순 평균으로 예측)
+
+anova_result <- anova(result1,result)
+print(anova_result)
+#p-value = 0.05보다 작으므로 두 집단의 차이가 있으므로 다중회귀분석 가능 
+
+summary(result)
+#p-value 가 0.05보다 작은 변수는 삭제
+df<-select(df,-c(Pregnancies,BloodPressure,BMI,Age))
+
+
+result <- lm(df$Diabetes ~ . , data = df) 
+result1 <- lm(df$Diabetes ~ 1, data = df) 
+
+summary(result)
+
+saveRDS(result, "regression_model.rds")
+
+loaded_model <- readRDS("regression_model.rds")
+
+new_data <- read.csv("C:/Users/USER/Desktop/02.다중회귀분석_실습/02.diabetes_test.csv")
+
+predicted <- predict(loaded_model , newdata = new_data)
+head(predicted)
+
+results <- data.frame(new_data, Predicted = predicted)
+
+rmse <- sqrt(mean((results$Diabetes - results$Predicted)^2))
+print(paste("RMSE:", round(rmse,3)))
+
+library(lmtest)
+bptest(result)
+#등분산성 : p>0.05보다 크면, 등분산성 가정을 유지 반대는 이분산성
+#p-value = 4.17e-05이므로  이분산성 
+
+
+#독립성 : p>0.05보다 크면 잔차의 독립성을 가짐
+library(car)
+durbinWatsonTest(result)
+#p-value = 0.814 이므로 독립성을 가진다. 
+
+
+#정규성 : p>0.05보다 크면 귀무가설 채택(정규성이 있음)
+shapiro_test(result$residuals)
+#p-value = 3.20e-25이므로 정규성이 없음 
+
+#4개의 조건에 대한 그래프를 모두 보는 방법
+opar <- par(no.readonly = TRUE) # 그래프가 들어갈 Window 생성
+par(mfrow = c(2, 2)) # 그래프가 들어갈 공간 생성 2X2
+plot(result) # 그래프 결과 도출
+par(opar) # 그래픽 매개변수 복원
+
+
+
+#이상치검정 : cook's D 값이 높으면 문제
+#세 기준에서(StudRes, Hat CookD) 상위 3개를 각각 뽑아 합친 것
+cand <- influencePlot(result, id = list(n = 3))
+
+mf <- model.frame(result) # 모형에 실제로 쓰인 데이터 (결측 제외된 상태)
+z <- round(scale(mf[sapply(mf, is.numeric)]), 1)
+
+rownames(z) <- rownames(mf) # 행 이름을 다시 붙임
+cbind(round(cand, 2), z[rownames(cand), ])
+#StudRes = 스튜던트 잔차(오차의 이탈도)
+#cookD:값이 0.5미만이면 모형을 흔드는 값이 없음(이상없음),1에 가까울 수록 이상
+
+out_rows <- c("229","446")
+df2 <- df[!rownames(df) %in% out_rows, ]
+
+#이상치가 제거된 데이터로 다시 분석 및 그래프 추출 
+result2 <- lm(Diabetes ~ . , data= df2)
+cand <- influencePlot(result2, id = list(n=3))
+
+#max Cook's D < 0.5 → 영향점 없음, 0.5~1 → 확인, > 1 → 영향점
+max(cooks.distance(result2))
