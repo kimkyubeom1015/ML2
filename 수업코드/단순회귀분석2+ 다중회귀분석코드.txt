@@ -38,6 +38,7 @@ skim(df)
 result <- lm(df$Diabetes ~ . , data = df) # ~.은 모든변수사용 (하나하+하기귀찮아서) 
 result1 <- lm(df$Diabetes ~ 1, data = df) # 다른 변수 고려x (단순 평균으로 예측)
 
+#ANOVA분석을 활용해 두 집단의 의미있는 차이가 있는지 확인(잔차제곱합 차이의 검증)(차이없으면 다중회귀 필요 없음)
 anova_result <- anova(result1,result)
 print(anova_result)
 #p-value = 0.05보다 작으므로 두 집단의 차이가 있으므로 다중회귀분석 가능 
@@ -48,7 +49,7 @@ df<-select(df,-c(Pregnancies,BloodPressure,BMI,Age))
 
 
 result <- lm(df$Diabetes ~ . , data = df) 
-result1 <- lm(df$Diabetes ~ 1, data = df) 
+result1 <- lm(df$Diabetes ~ 1, data = df)
 
 summary(result)
 
