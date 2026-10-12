@@ -112,3 +112,23 @@ cand <- influencePlot(result2, id = list(n=3))
 
 #max Cook's D < 0.5 → 영향점 없음, 0.5~1 → 확인, > 1 → 영향점
 max(cooks.distance(result2))
+
+library(car)
+#다중공선성(변수의 중복성) : 10이상 GVIF^(1/(2*DF)) (다중공선성이 있다)
+vif_values <- vif(result)
+print(vif_values)
+
+#AIC : 값이 작은게 좋은것이다
+
+library("MASS")
+
+#후진소거법
+result_bk = lm(df$Diabetes~.,data= df)
+DF_fit_bk =stepAIC(result_bk, direction = "backward", trace =T) #trace 하나씩 빼는 과정을 보여줌
+
+#전진선택법
+result_fw = lm(df$Diabetes ~ 1, data= df)
+DF_fit_fk = stepAIC(result_fw,direction ="forward",scope = (
+                      df$Diabetes ~ Pregnancies + Glucose + SkinThickness + Insulin + 
+                      BMI + Age),trace=T)
+
