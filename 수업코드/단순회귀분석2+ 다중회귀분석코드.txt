@@ -44,7 +44,7 @@ print(anova_result)
 #p-value = 0.05보다 작으므로 두 집단의 차이가 있으므로 다중회귀분석 가능 
 
 summary(result)
-#p-value 가 0.05보다 작은 변수는 삭제
+#p-value 가 0.05보다 큰 변수는 삭제
 df<-select(df,-c(Pregnancies,BloodPressure,BMI,Age))
 
 
