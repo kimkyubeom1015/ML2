@@ -57,7 +57,8 @@ SSE(Sum of Squared Residuals/Error) : 적합치에서 반응 값의 전체 잔�
 표본상관계수(sample coefficient of correlation)
 또는 피어슨 상관계수라 한다.
 
-rmse: 평균오차
+-공분산,상관계수
+MAE : 평군절대오차/MSE:평균제곱오차/RMSE:평균오차
 
 다중회귀분석을 하는 이유 
 = 여러 독립변수가 종속변수에 미치는 영향을 동시에 분석하고, 다른 변수의 영향을 고려하면서 결과를 설명하거나 예측하기 위해서!
