@@ -1,0 +1,248 @@
+# =====================================================================
+# 머신러닝2 과제 - Telco Customer Churn (통신사 고객 이탈)
+#   문제 1. 로지스틱 회귀(변수 처리 X), SVM, Decision Tree
+#           -> Confusion Matrix, Accuracy, AUC 각각 도출
+#   문제 2. 로지스틱 회귀로 95% 신뢰수준에서 유의한 변수 선정
+#           -> Cook's D > 0.5 데이터 제거 -> Decision Tree
+#           -> Confusion Matrix, Accuracy, AUC 도출
+#
+# 데이터: Kaggle "blastchar/telco-customer-churn"
+#         파일명 WA_Fn-UseC_-Telco-Customer-Churn.csv (7,043행, 21열)
+# 종속변수: Churn (Yes = 이탈, No = 유지)
+# =====================================================================
+
+# setwd("본인 경로")   # csv가 있는 폴더로 지정
+
+# 처음 한 번만 설치
+# install.packages(c("caret", "rpart", "rpart.plot", "skimr", "pROC", "e1071", "car"))
+
+library(caret)       # 데이터 분할, confusionMatrix
+library(skimr)       # 데이터 요약
+library(pROC)        # ROC, AUC
+library(e1071)       # SVM
+library(rpart)       # 의사결정나무 (CART)
+library(rpart.plot)  # 트리 그림
+library(car)         # vif, influencePlot
+
+
+# ---------------------------------------------------------------------
+# 0. 데이터 준비 (세 모델 공통)
+# ---------------------------------------------------------------------
+# stringsAsFactors = TRUE : 문자열 열(gender, Contract 등)을 전부 factor(범주형)로
+df <- read.csv("C:/Users/USER/Desktop/WA_Fn-UseC_-Telco-Customer-Churn.csv", stringsAsFactors = TRUE)
+skim(df)
+
+# customerID는 고객 번호라 예측에 의미 없음 -> 제거
+df$customerID <- NULL
+
+# TotalCharges에 공백(" ")이 11개 있어서 숫자가 아닌 factor로 읽힘
+# -> 숫자로 바꾸면 공백은 NA가 됨 (경고 메시지는 정상)
+df$TotalCharges <- as.numeric(as.character(df$TotalCharges))
+sum(is.na(df$TotalCharges))   # 11
+
+# 모델이 돌아가려면 결측 제거가 필요 (7,043행 -> 7,032행)
+# ※ 문제 1의 "변수 처리 X"는 변수를 고르거나 바꾸지 않는다는 뜻으로 보고,
+#   실행에 꼭 필요한 결측 제거만 함
+df <- na.omit(df)
+
+# SeniorCitizen은 0/1 숫자지만 의미는 범주(고령자 여부)
+df$SeniorCitizen <- as.factor(df$SeniorCitizen)
+
+# 종속변수 레벨 확인: "No"가 먼저, "Yes"가 두 번째
+#   -> 모든 모델에서 "Yes"(이탈) 확률을 뽑아서 0.5 기준으로 분류
+levels(df$Churn)
+table(df$Churn)   # No가 약 73%, Yes가 약 27% (불균형)
+
+# 학습 80% / 테스트 20% (세 모델 모두 같은 데이터로 비교하기 위해 seed 고정)
+set.seed(123)
+train_indices <- createDataPartition(df$Churn, p = 0.8, list = FALSE)
+train_data <- df[train_indices, ]
+test_data  <- df[-train_indices, ]
+
+
+# =====================================================================
+# 문제 1-1. 로지스틱 회귀분석 (변수 처리 X -> 모든 변수 그대로)
+# =====================================================================
+# ※ 수식 왼쪽에 train_data$Churn 처럼 $를 쓰면 "."에 Churn 자체가
+#   독립변수로 들어가 버림 -> 반드시 열 이름만 (Churn ~ .)
+logit_null  <- glm(Churn ~ 1, data = train_data, family = "binomial")  # 독립변수 없는 모델(절편만)
+logit_model <- glm(Churn ~ ., data = train_data, family = "binomial")  # 전체 변수 모델
+
+# 모델 전체가 유의한가? (우도비 검정)
+#   H0: 독립변수를 넣어도 절편만 있는 모델과 차이가 없다
+#   Pr(>Chi) < 0.05 -> H0 기각 -> 변수를 넣은 모델이 유의미하게 더 좋음
+anova(logit_null, logit_model, test = "Chisq")
+
+summary(logit_model)
+# summary에 NA 계수가 몇 개 보임:
+#   InternetService = "No"인 고객은 OnlineSecurity, TechSupport 등이
+#   전부 "No internet service"라서 더미변수끼리 완전히 겹침(완전 공선성)
+#   -> R이 겹치는 계수를 NA로 빼고 계산함. 예측 시 "rank-deficient" 경고가
+#      떠도 결과는 정상
+
+# 이탈(Yes) 확률
+logit_probs <- predict(logit_model, newdata = test_data, type = "response")
+logit_classes <- factor(ifelse(logit_probs > 0.5, "Yes", "No"), levels = c("No", "Yes"))
+
+# positive = "Yes" : Sensitivity가 "실제 이탈 고객을 얼마나 잡았나"가 됨
+logit_cm <- confusionMatrix(logit_classes, test_data$Churn, positive = "Yes")
+print(logit_cm)
+
+logit_roc <- roc(test_data$Churn, logit_probs)
+plot(logit_roc, main = "ROC - Logistic")
+auc(logit_roc)
+
+
+# =====================================================================
+# 문제 1-2. SVM
+# =====================================================================
+# factor 변수는 svm이 수식(Churn ~ .)을 보고 자동으로 더미변수로 바꿔 줌
+# 학습 데이터가 약 5,600행 + probability = TRUE 라서 시간이 좀 걸림
+svm_model <- svm(Churn ~ ., data = train_data,
+                 type = "C-classification",  # Soft margin 분류
+                 kernel = "polynomial",      # 다항 커널
+                 cost = 1,                   # C
+                 gamma = 0.1,
+                 probability = TRUE)         # 확률값 도출
+summary(svm_model)
+
+svm_pred <- predict(svm_model, test_data, probability = TRUE)
+# 확률은 결과 객체의 "probabilities" 속성에 들어 있음 -> "Yes" 열
+svm_probs <- attr(svm_pred, "probabilities")[, "Yes"]
+svm_classes <- factor(ifelse(svm_probs > 0.5, "Yes", "No"), levels = c("No", "Yes"))
+
+svm_cm <- confusionMatrix(svm_classes, test_data$Churn, positive = "Yes")
+print(svm_cm)
+
+svm_roc <- roc(test_data$Churn, svm_probs)
+plot(svm_roc, main = "ROC - SVM")
+auc(svm_roc)
+
+
+# =====================================================================
+# 문제 1-3. Decision Tree (CART)
+# =====================================================================
+# cp: 분할마다 최소 1% 개선 / maxdepth: 최대 깊이 5 / minsplit: 노드 최소 10개
+control_params <- rpart.control(cp = 0.01, maxdepth = 5, minsplit = 10)
+
+tree_model <- rpart(Churn ~ ., data = train_data, method = "class", control = control_params)
+summary(tree_model)     # CP표(xerror), Variable importance, 노드별 분할
+rpart.plot(tree_model)  # 예: Contract가 Month-to-month인가? -> tenure가 짧은가? ...
+# 범주가 3개인 Contract도 CART는 이진 분할만 하므로
+# {Month-to-month} vs {One year, Two year} 처럼 두 묶음으로 나눔
+
+# [, "Yes"] : 이탈일 확률 (강의 코드의 [,1]은 첫 레벨 "No" 확률이라 주의)
+tree_probs <- predict(tree_model, test_data, type = "prob")[, "Yes"]
+tree_classes <- factor(ifelse(tree_probs > 0.5, "Yes", "No"), levels = c("No", "Yes"))
+
+tree_cm <- confusionMatrix(tree_classes, test_data$Churn, positive = "Yes")
+print(tree_cm)
+
+tree_roc <- roc(test_data$Churn, tree_probs)
+plot(tree_roc, main = "ROC - Decision Tree")
+auc(tree_roc)
+
+
+# ---------------------------------------------------------------------
+# 문제 1 결과 비교표
+# ---------------------------------------------------------------------
+result_q1 <- data.frame(
+  Model    = c("Logistic", "SVM", "Decision Tree"),
+  Accuracy = round(c(logit_cm$overall["Accuracy"],
+                     svm_cm$overall["Accuracy"],
+                     tree_cm$overall["Accuracy"]), 4),
+  AUC      = round(c(auc(logit_roc), auc(svm_roc), auc(tree_roc)), 4)
+)
+print(result_q1)
+
+# ROC 세 개 한 그림에
+plot(logit_roc, col = "red", main = "ROC 비교")
+plot(svm_roc,   col = "blue", add = TRUE)
+plot(tree_roc,  col = "darkgreen", add = TRUE)
+legend("bottomright", legend = c("Logistic", "SVM", "Decision Tree"),
+       col = c("red", "blue", "darkgreen"), lwd = 2)
+
+
+# =====================================================================
+# 문제 2. 유의한 변수 선정 -> Cook's D > 0.5 제거 -> Decision Tree
+# =====================================================================
+
+# 2-0. 완전 공선성 정리
+#   문제 1에서 NA 계수가 생긴 원인인 "No internet service",
+#   "No phone service"를 "No"로 합침 -> 계수가 모두 추정되고 vif도 돌아감
+#   (문제 2는 변수 처리를 허용하므로 여기서 정리)
+fix_cols <- c("MultipleLines", "OnlineSecurity", "OnlineBackup", "DeviceProtection",
+              "TechSupport", "StreamingTV", "StreamingMovies")
+fix_no <- function(d) {
+  for (cc in fix_cols) {
+    d[[cc]] <- factor(ifelse(d[[cc]] %in% c("No internet service", "No phone service"),
+                             "No", as.character(d[[cc]])))
+  }
+  d
+}
+# 문제 1과 같은 train/test 분할을 그대로 쓰고 값만 정리
+train2 <- fix_no(train_data)
+test2  <- fix_no(test_data)
+
+# 2-1. 로지스틱 회귀 (전체 변수)
+result_null <- glm(Churn ~ 1, data = train2, family = "binomial")
+result      <- glm(Churn ~ ., data = train2, family = "binomial")
+
+# 모델 전체 유의성 검정 (Pr(>Chi) < 0.05 이면 모델이 유의)
+anova(result_null, result, test = "Chisq")
+
+summary(result)
+
+# 다중공선성 확인 (GVIF^(1/(2*Df))가 대략 2~3 이상이면 의심)
+# TotalCharges는 tenure × MonthlyCharges와 비슷해서 값이 크게 나올 수 있음
+vif(result)
+
+# 2-2. 95% 신뢰수준에서 유의한 변수 (p < 0.05)
+#   범주형 변수는 더미 단위로 p값이 나옴 (예: ContractOne year, ContractTwo year)
+#   -> 더미 중 하나라도 p < 0.05면 그 변수 전체를 선택
+pvals <- summary(result)$coefficients[, 4]
+mm <- model.matrix(result)
+sig_cols <- colnames(mm) %in% names(pvals)[pvals < 0.05]
+sig_vars <- unique(attr(terms(result), "term.labels")[attr(mm, "assign")[sig_cols]])
+sig_vars   # 선택된 변수 (summary를 보고 손으로 적어도 됨)
+
+# 2-3. Cook's Distance > 0.5 인 데이터 제거
+cd <- cooks.distance(result)
+summary(cd)
+sum(cd > 0.5)              # 제거될 행 수 (로지스틱은 0개인 경우가 많음 -> 그래도 정상)
+which(cd > 0.5)
+influencePlot(result)      # 영향점 그림 (원 크기 = Cook's D)
+
+train_clean <- train2[cd <= 0.5, ]
+nrow(train2); nrow(train_clean)
+
+# 2-4. 유의한 변수만 넣어 Decision Tree
+formula_sig <- as.formula(paste("Churn ~", paste(sig_vars, collapse = " + ")))
+formula_sig
+
+tree_model2 <- rpart(formula_sig, data = train_clean, method = "class", control = control_params)
+summary(tree_model2)
+rpart.plot(tree_model2)
+
+tree2_probs <- predict(tree_model2, test2, type = "prob")[, "Yes"]
+tree2_classes <- factor(ifelse(tree2_probs > 0.5, "Yes", "No"), levels = c("No", "Yes"))
+
+tree2_cm <- confusionMatrix(tree2_classes, test2$Churn, positive = "Yes")
+print(tree2_cm)
+
+tree2_roc <- roc(test2$Churn, tree2_probs)
+plot(tree2_roc, main = "ROC - Decision Tree (유의변수 + Cook's D 제거)")
+auc(tree2_roc)
+
+
+# ---------------------------------------------------------------------
+# 문제 2 결과 (문제 1 트리와 비교)
+# ---------------------------------------------------------------------
+result_q2 <- data.frame(
+  Model    = c("Decision Tree (전체 변수)", "Decision Tree (유의변수 + Cook's D 제거)"),
+  Variables = c(ncol(train_data) - 1, length(sig_vars)),
+  Accuracy = round(c(tree_cm$overall["Accuracy"], tree2_cm$overall["Accuracy"]), 4),
+  AUC      = round(c(auc(tree_roc), auc(tree2_roc)), 4)
+)
+print(result_q2)
+
