@@ -168,7 +168,7 @@ auc(roc_curve)
 
 
 
-
+#서포트벡터머신 실습
 df <- read.csv("C:/Users/USER/Desktop/Final_Augmented_dataset_Diseases_and_Symptoms.csv")
 skim(df)
 
@@ -221,7 +221,7 @@ print(conf_matrix)
 
 
 
-#실습
+#로지스틱 회귀 실습   
 
 df <- read.csv("C:/Users/USER/Desktop/archive (2)/train_data.csv", header = TRUE , na =".")
 
@@ -290,3 +290,4 @@ confusion_matrix
 roc_curve <- roc(test_data$Survived, test_predictions)
 plot(roc_curve)
 auc(roc_curve)
+
